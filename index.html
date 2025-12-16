@@ -103,10 +103,6 @@
             background: #ffe6e6;
             color: #e74c3c;
         }
-        .success-message {
-            background: #e6ffe6;
-            color: #27ae60;
-        }
         .loading {
             color: #667eea;
         }
@@ -169,7 +165,7 @@
         <h1>📁 USBメモリ貸与情報</h1>
         
         <h2>■ 貸与USBメモリ一覧</h2>
-        <table class="usb-table" id="usbTable">
+        <table class="usb-table">
             <thead>
                 <tr>
                     <th>No.</th>
@@ -177,8 +173,7 @@
                     <th>管理番号</th>
                 </tr>
             </thead>
-            <tbody id="usbTableBody">
-            </tbody>
+            <tbody id="usbTableBody"></tbody>
         </table>
 
         <h2>■ 貸与目的</h2>
@@ -202,8 +197,26 @@
     </div>
 
     <script>
-        // ⚠️ ここにGASのウェブアプリURLを設定してください
+        // GASのウェブアプリURL
         const GAS_URL = "https://script.google.com/macros/s/AKfycbzTmCwRurOAu9nenPPN27V7pBpD_5wghX00PVJH2JtIpotuSDAbOsdiDli382ZjtQWB/exec";
+
+        // JSONP用のコールバック関数
+        function handleAuthResponse(data) {
+            const loginBtn = document.getElementById("loginBtn");
+            const errorMessage = document.getElementById("errorMessage");
+            const loadingMessage = document.getElementById("loadingMessage");
+
+            loginBtn.disabled = false;
+            loadingMessage.style.display = "none";
+
+            if (data.status === "success") {
+                displayContent(data.content);
+                document.getElementById("loginContainer").style.display = "none";
+                document.getElementById("contentContainer").style.display = "block";
+            } else {
+                showError(data.message || "認証に失敗しました");
+            }
+        }
 
         async function authenticate() {
             const password = document.getElementById("password").value;
@@ -216,38 +229,35 @@
                 return;
             }
 
-            // ローディング表示
             loginBtn.disabled = true;
             errorMessage.style.display = "none";
             loadingMessage.style.display = "block";
 
             try {
-                const response = await fetch(GAS_URL, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        action: "authenticate",
-                        password: password,
-                        ip: await getUserIP()
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.status === "success") {
-                    displayContent(data.content);
-                    document.getElementById("loginContainer").style.display = "none";
-                    document.getElementById("contentContainer").style.display = "block";
-                } else {
-                    showError(data.message || "認証に失敗しました");
-                }
+                const ip = await getUserIP();
+                
+                // JSONP リクエスト
+                const script = document.createElement('script');
+                const callbackName = 'handleAuthResponse';
+                
+                script.src = GAS_URL + 
+                    '?action=authenticate' +
+                    '&password=' + encodeURIComponent(password) +
+                    '&ip=' + encodeURIComponent(ip) +
+                    '&callback=' + callbackName;
+                
+                script.onerror = function() {
+                    loginBtn.disabled = false;
+                    loadingMessage.style.display = "none";
+                    showError("通信エラーが発生しました");
+                };
+                
+                document.body.appendChild(script);
+                
             } catch (error) {
-                showError("通信エラーが発生しました: " + error.message);
-            } finally {
                 loginBtn.disabled = false;
                 loadingMessage.style.display = "none";
+                showError("通信エラーが発生しました: " + error.message);
             }
         }
 
@@ -260,7 +270,6 @@
         }
 
         function displayContent(content) {
-            // USBテーブルを生成
             const tbody = document.getElementById("usbTableBody");
             tbody.innerHTML = "";
             content.usbList.forEach(usb => {
@@ -270,7 +279,6 @@
                 row.insertCell(2).textContent = usb.id;
             });
 
-            // その他の情報を表示
             document.getElementById("purposeText").innerHTML = 
                 `市県民税賦課のため、<span class="highlight">給与支払報告書等データ入力業務委託</span>において、成果物を本市が貸与するUSBに格納して納品してもらうため。`;
             document.getElementById("periodText").textContent = content.period;
@@ -296,7 +304,6 @@
             document.getElementById("errorMessage").style.display = "none";
         }
 
-        // Enterキーでログイン
         document.getElementById("password").addEventListener("keypress", function(event) {
             if (event.key === "Enter") {
                 authenticate();
